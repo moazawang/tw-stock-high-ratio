@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台股創新高價股數量比 vs 大盤指數</title>
+    <!-- 引入 Chart.js 函式庫（用來畫圖的工具） -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        /* ===== 頁面基本樣式 ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Microsoft JhengHei', 'PingFang TC', sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
+            padding: 20px;
+            color: #e0e0e0;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 28px;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #f7971e, #ffd200);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+
+        /* ===== 統計卡片區 ===== */
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 16px 24px;
+            text-align: center;
+            min-width: 160px;
+            flex: 1;
+            max-width: 220px;
+        }
+        .stat-card .label {
+            font-size: 13px;
+            color: #999;
+            margin-bottom: 6px;
+        }
+        .stat-card .value {
+            font-size: 26px;
+            font-weight: bold;
+        }
+        .stat-card .value.highlight {
+            color: #ffd200;
+        }
+        .stat-card .value.green {
+            color: #4caf50;
+        }
+        .stat-card .value.blue {
+            color: #42a5f5;
+        }
+        .stat-card .value.cyan {
+            color: #26c6da;
+        }
+
+        /* ===== 圖表容器 ===== */
+        .chart-wrapper {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        canvas {
+            width: 100% !important;
+        }
+
+        /* ===== 表格區 ===== */
+        .table-wrapper {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        .table-wrapper h2 {
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: #ccc;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th {
+            background: rgba(255,255,255,0.08);
+            padding: 10px 12px;
+            text-align: center;
+            color: #aaa;
+            font-weight: 600;
+        }
+        td {
+            padding: 10px 12px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        tr:hover td {
+            background: rgba(255,255,255,0.04);
+        }
+        .footer {
+            text-align: center;
+            color: #555;
+            font-size: 12px;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>台股創新高價股數量比 vs 大盤指數</h1>
+        <p class="subtitle">每日追蹤：創 52 週新高股票佔比（金色）與加權指數走勢（青色）</p>
+
+        <!-- 統計卡片：新增了「大盤指數」卡片 -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="label">大盤指數</div>
+                <div class="value cyan" id="latest-taiex">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">創新高比例</div>
+                <div class="value highlight" id="latest-ratio">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">創新高股票數</div>
+                <div class="value green" id="latest-count">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">有效樣本數</div>
+                <div class="value blue" id="latest-valid">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">資料天數</div>
+                <div class="value" id="total-days">—</div>
+            </div>
+        </div>
+
+        <!-- 雙 Y 軸折線圖 -->
+        <div class="chart-wrapper">
+            <canvas id="mainChart" height="420"></canvas>
+        </div>
+
+        <!-- 歷史資料表格：新增「大盤指數」欄位 -->
+        <div class="table-wrapper">
+            <h2>歷史資料</h2>
+            <table id="dataTable">
+                <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>大盤指數</th>
+                        <th>有效股票數</th>
+                        <th>創新高股票數</th>
+                        <th>創新高比例 (%)</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <p class="footer">資料來源：Yahoo Finance ｜ 最後更新：<span id="last-update"></span></p>
+    </div>
+
+    <script>
+        // ===== 嵌入從 CSV 讀取的資料 =====
+        const dates = ["2026-04-01", "2026-04-02", "2026-04-07", "2026-04-08", "2026-04-09"];
+        const ratios = [1.35, 2.23, 2.44, 4.46, 5.13];
+        const newHighs = [26, 43, 47, 86, 99];
+        const validCounts = [1929, 1929, 1930, 1930, 1930];
+        const taiexValues = [null, 32572.43, 33229.82, 34761.38, 34861.16];
+
+        // ===== 更新統計卡片上的數字 =====
+        const lastIdx = dates.length - 1;
+        document.getElementById('latest-ratio').textContent = ratios[lastIdx] + '%';
+        document.getElementById('latest-count').textContent = newHighs[lastIdx] + ' 檔';
+        document.getElementById('latest-valid').textContent = validCounts[lastIdx] + ' 檔';
+        document.getElementById('total-days').textContent = dates.length + ' 天';
+        document.getElementById('last-update').textContent = dates[lastIdx];
+
+        // 大盤指數卡片：如果有資料就顯示數字，沒有就顯示「—」
+        const latestTaiex = taiexValues[lastIdx];
+        document.getElementById('latest-taiex').textContent =
+            latestTaiex !== null ? latestTaiex.toLocaleString() : '—';
+
+        // ===== 用 Chart.js 繪製「雙 Y 軸」折線圖 =====
+        const ctx = document.getElementById('mainChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',  // 折線圖
+            data: {
+                labels: dates,  // X 軸：日期
+                datasets: [
+                    {
+                        // 第一條線：創新高比例（綁定到左 Y 軸 'y'）
+                        label: '創新高比例 (%)',
+                        data: ratios,
+                        borderColor: '#ffd200',                    // 金色線條
+                        backgroundColor: 'rgba(255,210,0,0.08)',   // 半透明金色填充
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#ffd200',
+                        fill: true,
+                        tension: 0.3,
+                        yAxisID: 'y'   // 綁定到左 Y 軸
+                    },
+                    {
+                        // 第二條線：大盤指數（綁定到右 Y 軸 'y1'）
+                        label: '大盤加權指數',
+                        data: taiexValues,
+                        borderColor: '#26c6da',                    // 青色線條
+                        backgroundColor: 'rgba(38,198,218,0.08)',  // 半透明青色填充
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#26c6da',
+                        fill: true,
+                        tension: 0.3,
+                        yAxisID: 'y1',  // 綁定到右 Y 軸
+                        // spanGaps: true 代表如果某天沒有資料（null），
+                        // Chart.js 會自動跳過並把前後兩點連起來
+                        spanGaps: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,          // 自適應視窗大小
+                maintainAspectRatio: false,
+                interaction: {
+                    // 讓滑鼠懸停時，兩條線的提示框同時顯示
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#ccc', font: { size: 14 } }
+                    },
+                    tooltip: {
+                        // 滑鼠懸停時顯示的提示框
+                        callbacks: {
+                            afterLabel: function(context) {
+                                const i = context.dataIndex;
+                                // 只在「創新高比例」那條線上顯示額外資訊
+                                if (context.datasetIndex === 0) {
+                                    return '創新高: ' + newHighs[i] + ' / ' + validCounts[i] + ' 檔';
+                                }
+                                return '';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#888', maxRotation: 45 },
+                        grid: { color: 'rgba(255,255,255,0.05)' }
+                    },
+                    // ===== 左 Y 軸：創新高比例 (%) =====
+                    y: {
+                        type: 'linear',
+                        position: 'left',     // 放在左邊
+                        ticks: {
+                            color: '#ffd200',  // 金色刻度（跟線條同色，方便辨認）
+                            callback: function(v) { return v + '%'; }
+                        },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: '創新高比例 (%)',
+                            color: '#ffd200',
+                            font: { size: 13 }
+                        }
+                    },
+                    // ===== 右 Y 軸：大盤加權指數 =====
+                    y1: {
+                        type: 'linear',
+                        position: 'right',    // 放在右邊
+                        ticks: {
+                            color: '#26c6da',  // 青色刻度（跟線條同色）
+                            callback: function(v) { return v.toLocaleString(); }
+                        },
+                        grid: {
+                            // 右 Y 軸的格線設為不顯示，避免跟左 Y 軸的格線重疊
+                            drawOnChartArea: false
+                        },
+                        title: {
+                            display: true,
+                            text: '大盤加權指數',
+                            color: '#26c6da',
+                            font: { size: 13 }
+                        }
+                    }
+                }
+            }
+        });
+
+        // ===== 填入歷史資料表格（從最新到最舊排列） =====
+        const tbody = document.querySelector('#dataTable tbody');
+        for (let i = dates.length - 1; i >= 0; i--) {
+            const tr = document.createElement('tr');
+            // 大盤指數如果是 null 就顯示「—」，否則顯示千分位格式的數字
+            const taiexDisplay = taiexValues[i] !== null
+                ? taiexValues[i].toLocaleString()
+                : '—';
+            tr.innerHTML = `<td>${dates[i]}</td><td>${taiexDisplay}</td><td>${validCounts[i]}</td><td>${newHighs[i]}</td><td>${ratios[i]}%</td>`;
+            tbody.appendChild(tr);
+        }
+    </script>
+</body>
+</html>
